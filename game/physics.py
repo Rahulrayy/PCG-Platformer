@@ -20,6 +20,7 @@ class PhysicsEngine:
             elif self.player.vel_x < 0:
                 self.player.left  = wall.right
             self.player.vel_x = 0.0
+            break
 
         # vertical plus colliosn
         self.player.on_ground = False
@@ -33,3 +34,4 @@ class PhysicsEngine:
             elif self.player.vel_y > 0:     #jumping up into a ceiling
                 self.player.top  = wall.bottom
                 self.player.vel_y = 0.0
+            break

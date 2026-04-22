@@ -22,7 +22,7 @@ class GameWindow(arcade.Window):
         self.player:  Player            | None = None
         self.physics: PhysicsEngine     | None = None
         self.camera:  Camera            | None = None
-        self.score:   Score             | None = None
+        self.score:   Score                    = Score()
         self.keys:    dict              = {}
         self._fps:    float             = 0.0
 
@@ -41,7 +41,6 @@ class GameWindow(arcade.Window):
 
         self.physics = PhysicsEngine(self.player, self.walls)
         self.camera  = Camera(self._chunk.pixel_width(TILE_SIZE))
-        self.score   = Score()
         self.camera.update(self.player)
 
 
@@ -63,7 +62,7 @@ class GameWindow(arcade.Window):
         self.camera.update(self.player)
         self.score.update(self.player.center_x)
 
-        if self.player.top < 0:
+        if self.player.bottom < 0:
             self.setup()
 
     def on_draw(self):
