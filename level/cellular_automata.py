@@ -1,5 +1,6 @@
 import random
 import numpy as np
+from config import CHUNK_WIDTH_TILES, CHUNK_HEIGHT_TILES
 
 """
 
@@ -7,14 +8,14 @@ generates a random binary grid and uses cellular automata rules to produce cave-
 
 """
 
-# How big the grid is
-GRID_WIDTH = 50
-GRID_HEIGHT = 30
+# How big the grid is...changed it so it imports from config
+GRID_WIDTH = CHUNK_WIDTH_TILES
+GRID_HEIGHT = CHUNK_HEIGHT_TILES
 
 # Parameters for cellular automata
-CHANCE_TO_START_ALIVE = 0.4
-DEATH_LIMIT = 3
-BIRTH_LIMIT = 4
+CHANCE_TO_START_ALIVE = 0.60#keep it at .6 for a playable level for noe makig it .45  or .5 gives a more 'interesting' level but that needs A* solvability validation just bfs does not gaurentee player solvability
+DEATH_LIMIT = 4
+BIRTH_LIMIT = 5
 NUMBER_OF_STEPS = 4
 
 def create_grid(width, height):
@@ -75,3 +76,7 @@ def get_raw_tile_array():
         grid = do_simulation_step(grid)
     with np.printoptions(threshold=np.inf,linewidth=np.inf):
         print(grid)
+    return grid
+
+if __name__ == "__main__":
+    get_raw_tile_array()

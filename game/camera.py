@@ -6,18 +6,17 @@ class Camera:
     Wraps two arcade.Camera instances     game_cam-  follows the player, clamped to chunk bounds.
       gui_cam- stays fixed at the origin so HUD text doesn't scroll.
     """
-    def __init__(self, world_pixel_width: int):
+    def __init__(self):
         self.game_cam = arcade.Camera(SCREEN_WIDTH, SCREEN_HEIGHT)
         self.gui_cam  = arcade.Camera(SCREEN_WIDTH, SCREEN_HEIGHT)
-        self.world_pixel_width = world_pixel_width
         self._x = 0.0   # current camera left edge in world coords
 
-    def update(self, player):
-        #target the camera so the player is horizontally centred.
+    def update(self, player, world_pixel_width: int):
+        #target the camera so the player is horizontally centred
         target_x = player.center_x - SCREEN_WIDTH / 2
 
         #never show outside the chunk on either side.
-        max_x = self.world_pixel_width - SCREEN_WIDTH
+        max_x = world_pixel_width - SCREEN_WIDTH
         target_x = max(0.0, min(target_x, float(max_x)))
 
         self._x = target_x

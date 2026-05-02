@@ -13,6 +13,8 @@ class Chunk:
     """
     tiles: np.ndarray
     index: int = 0
+    entry_row: int | None = None  #none until generator sets it
+    exit_row: int | None = None  #none until BFS sets it
     @property
     def width_tiles(self) -> int:
         return self.tiles.shape[1]

@@ -3,11 +3,7 @@ from level.chunk import Chunk, SOLID
 from config import CHUNK_WIDTH_TILES, CHUNK_HEIGHT_TILES
 
 def make_opening_segment() -> Chunk:
-    """
 
-    no floor,falling below y=0 is death.
-    everything is built around a spawn platform at row 9
-    """
     tiles = np.zeros((CHUNK_HEIGHT_TILES, CHUNK_WIDTH_TILES), dtype=np.int8)
     tiles[:, 0:2] = SOLID
     tiles[9, 2:10] = SOLID
@@ -31,4 +27,8 @@ def make_opening_segment() -> Chunk:
         row       = 8 + step           # rows 8 - 11
         tiles[row, col_start:col_end] = SOLID
 
-    return Chunk(tiles=tiles, index=0)
+    # no right wall so that it can transition into chunk 1
+    chunk = Chunk(tiles=tiles, index=0)
+    chunk.entry_row = 9
+    chunk.exit_row  = 10
+    return chunk

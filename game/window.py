@@ -9,8 +9,8 @@ from level.tilemap import chunk_to_sprite_list
 from game.player import Player
 from game.physics import PhysicsEngine
 from game.camera import Camera
+from game.chunk_manager import ChunkManager
 from game.score import Score
-
 
 class GameWindow(arcade.Window):
 
@@ -18,31 +18,27 @@ class GameWindow(arcade.Window):
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
         arcade.set_background_color(COLOR_BACKGROUND)
 
-        self.walls:   arcade.SpriteList | None = None
-        self.player:  Player            | None = None
-        self.physics: PhysicsEngine     | None = None
-        self.camera:  Camera            | None = None
-        self.score:   Score                    = Score()
-        self.keys:    dict              = {}
-        self._fps:    float             = 0.0
-
-        self._chunk = None
+        self.chunk_mgr: ChunkManager    | None = None
+        self.player:    Player          | None = None
+        self.physics:   PhysicsEngine   | None = None
+        self.camera:    Camera          | None = None
+        self.score:     Score                  = Score()
+        self.keys:      dict            = {}
+        self._fps:      float           = 0.0
 
     def setup(self):
-        if self._chunk is None:
-            self._chunk = make_opening_segment()
+        opening       = make_opening_segment()
+        opening_walls = chunk_to_sprite_list(opening)
+        self.chunk_mgr = ChunkManager(opening, opening_walls)
 
-        self.walls  = chunk_to_sprite_list(self._chunk)
         self.player = Player()
-
         spawn_platform_top = (CHUNK_HEIGHT_TILES - 1 - 9) * TILE_SIZE + TILE_SIZE
         self.player.center_x = TILE_SIZE * 6
         self.player.bottom   = spawn_platform_top + 2
 
-        self.physics = PhysicsEngine(self.player, self.walls)
-        self.camera  = Camera(self._chunk.pixel_width(TILE_SIZE))
-        self.camera.update(self.player)
-
+        self.physics = PhysicsEngine(self.player, self.chunk_mgr.walls)
+        self.camera  = Camera()
+        self.camera.update(self.player, self.chunk_mgr.world_pixel_width)
 
     def on_key_press(self, key, modifiers):
         self.keys[key] = True
@@ -59,7 +55,8 @@ class GameWindow(arcade.Window):
 
         self.player.apply_input(self.keys)
         self.physics.update(delta_time)
-        self.camera.update(self.player)
+        self.chunk_mgr.update(self.player.center_x)
+        self.camera.update(self.player, self.chunk_mgr.world_pixel_width)
         self.score.update(self.player.center_x)
 
         if self.player.bottom < 0:
@@ -69,13 +66,13 @@ class GameWindow(arcade.Window):
         self.clear()
 
         self.camera.use_game()
-        self.walls.draw()
+        self.chunk_mgr.walls.draw()
         self.player.draw()
 
         self.camera.use_gui()
 
         arcade.draw_text(
-            f"Distance- {self.score.tiles_traveled} meters",#actally tiles but mts looked better inside game
+            f"Distance- {self.score.tiles_traveled} meters",  # actually tiles but mts looked better inside game
             start_x=20, start_y=SCREEN_HEIGHT - 40,
             color=arcade.color.WHITE,
             font_size=18,
