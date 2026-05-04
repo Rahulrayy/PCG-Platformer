@@ -42,7 +42,7 @@ class GameWindow(arcade.Window):
 
     def on_key_press(self, key, modifiers):
         self.keys[key] = True
-        if key == arcade.key.W:
+        if key == arcade.key.W or key == arcade.key.SPACE:
             self.player.try_jump()
 
     def on_key_release(self, key, modifiers):
