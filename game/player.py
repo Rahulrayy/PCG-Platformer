@@ -1,5 +1,5 @@
 import arcade
-from config import TILE_SIZE, COLOR_PLAYER, MOVE_SPEED, JUMP_SPEED
+from config import TILE_SIZE, COLOR_PLAYER, MOVE_SPEED, JUMP_SPEED, CHUNK_WIDTH_TILES
 
 class Player(arcade.SpriteSolidColor):
     """
@@ -25,6 +25,9 @@ class Player(arcade.SpriteSolidColor):
             self.vel_x = -MOVE_SPEED
         elif keys_held.get(arcade.key.D):
             self.vel_x =  MOVE_SPEED
+        elif keys_held.get(arcade.key.L):
+            # skip opening segment
+            self.center_x = TILE_SIZE * CHUNK_WIDTH_TILES - TILE_SIZE * 5
         else:
             self.vel_x = 0.0
 
