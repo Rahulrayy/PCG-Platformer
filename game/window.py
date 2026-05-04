@@ -23,8 +23,8 @@ class GameWindow(arcade.Window):
         self.physics:   PhysicsEngine   | None = None
         self.camera:    Camera          | None = None
         self.score:     Score                  = Score()
-        self.keys:      dict            = {}
-        self._fps:      float           = 0.0
+        self.keys:      dict                   = {}
+        self._fps:      float                  = 0.0
 
     def setup(self):
         opening       = make_opening_segment()
