@@ -46,7 +46,8 @@ def count_alive_neighbors(grid, x, y):
                 # Edges are considered alive. Makes map more likely to appear naturally closed.
                 alive_count += 1
             elif grid[neighbor_y][neighbor_x] == 1:
-                alive_count += 1
+                if random.random() <= 0.99:
+                    alive_count += 1
     return alive_count
 
 def do_simulation_step(old_grid):
@@ -75,7 +76,8 @@ def get_raw_tile_array():
     for step in range(NUMBER_OF_STEPS):
         grid = do_simulation_step(grid)
     with np.printoptions(threshold=np.inf,linewidth=np.inf):
-        print(grid)
+        # print(grid)
+        pass
     return grid
 
 if __name__ == "__main__":
