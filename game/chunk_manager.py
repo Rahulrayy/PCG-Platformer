@@ -2,6 +2,7 @@ import arcade
 from level.chunk import Chunk
 from level.tilemap import chunk_to_sprite_list
 from level.generator import generate_raw_chunk
+from validation.bfs_reachability import bfs
 from config import TILE_SIZE
 
 class ChunkManager:
@@ -62,7 +63,13 @@ class ChunkManager:
         prev  = self._loaded.get(index - 1, {}).get('chunk')
         entry = prev.exit_row if prev else None
 
-        chunk     = generate_raw_chunk(index=index, entry_row=entry)
+        for _ in range(20):
+            chunk = generate_raw_chunk(index=index, entry_row=entry)
+            if bfs(chunk):
+                break
+        else:
+            raise RuntimeError(f"Could not generate a solvable chunk after 20 attempts (index={index})")
+
         offset_x  = index * self._chunk_px_width
         raw_walls = chunk_to_sprite_list(chunk)
 

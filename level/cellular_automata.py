@@ -13,7 +13,7 @@ GRID_WIDTH = CHUNK_WIDTH_TILES
 GRID_HEIGHT = CHUNK_HEIGHT_TILES
 
 # Parameters for cellular automata
-CHANCE_TO_START_ALIVE = 0.60#keep it at .6 for a playable level for noe makig it .45  or .5 gives a more 'interesting' level but that needs A* solvability validation just bfs does not gaurentee player solvability
+CHANCE_TO_START_ALIVE = 0.55 #keep it at .6 for a playable level for noe makig it .45  or .5 gives a more 'interesting' level but that needs A* solvability validation just bfs does not gaurentee player solvability
 DEATH_LIMIT = 4
 BIRTH_LIMIT = 5
 NUMBER_OF_STEPS = 4
