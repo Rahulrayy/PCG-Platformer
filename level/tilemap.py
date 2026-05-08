@@ -7,7 +7,7 @@ def chunk_to_sprite_list(chunk: Chunk) -> arcade.SpriteList:
     walls = arcade.SpriteList(use_spatial_hash=True)
     
     tileset = arcade.load_spritesheet(
-        "PCG-Platformer\\assets\\Tileset.png",
+        "assets\\Tileset.png",
         sprite_width=48,
         sprite_height=48,
         columns=3,

@@ -6,7 +6,7 @@ class Player(arcade.Sprite):
         super().__init__()
 
         self.texture_list = arcade.load_spritesheet(
-            "PCG-Platformer\\assets\\Char_Robot.png",
+            "assets\\Char_Robot.png",
             sprite_width=48, 
             sprite_height=48, 
             columns=8, 

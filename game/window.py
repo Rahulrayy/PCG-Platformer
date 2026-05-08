@@ -32,7 +32,7 @@ class GameWindow(arcade.Window):
         self.background_list = arcade.SpriteList()
         
         bg_textures = arcade.load_spritesheet(
-            "PCG-Platformer\\assets\\Background_n_details.png",
+            "assets\\Background_n_details.png",
             sprite_width=64, 
             sprite_height=64, 
             columns=4, 
