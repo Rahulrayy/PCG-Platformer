@@ -3,13 +3,14 @@ import numpy as np
 import heapq as hp
 
 class Node:
-    def __init__(self, parent, pos, h):
+    def __init__(self, parent, pos, g):
         self.x = pos[0]
         self.y = pos[1]
         self.pos = pos
         self.parent = parent
-        self.h = h
-
+        self.g = g
+        self._h = None
+        self._f = None
 
     def __eq__(self, other):
         assert isinstance(other, Node), "Can only compare nodes with each other"
@@ -20,6 +21,24 @@ class Node:
     def __hash__(self):
         return hash((self.x, self.y))
 
+    def get_f(self):
+        return self._f
+    
+    def f(self) -> int:
+        self._f = self.h + self.g
+        return self._f
+    
+
+    def get_h(self):
+        return self._h
+    
+    def h(self, final_pos: tuple[int, int]) -> int:
+        self._h = self.manhatten(self.pos, final_pos)
+        return self._h
+    
+    
+    def manhatten(self, pos1: tuple[int, int], pos2: tuple[int, int]) -> int:
+        return np.sum(np.abs(np.array(pos1) - np.array(pos2)))
 
 
 class PlatformGraph():
@@ -65,18 +84,28 @@ class PlatformGraph():
         max_y_lookup = np.array([self.max_y_dict.get(d, 0) for d in range(np.min(dx), np.max(dx) + 1)])
         lookup_indices = dx - np.min(dx)
         max_y_values = max_y_lookup[lookup_indices]
-        reachable_mask = y_coords < (max_y_values + 2 * pos1[1])
+        reachable_mask = (y_coords < (max_y_values + 2 * pos1[1]))
         return reachable_mask
 
     def _is_ground(self,chunk: np.ndarray):
         ground_chunk = chunk[:, :-1] - chunk[:, 1:]
         copy_chunk = np.zeros_like(chunk)
         copy_chunk[:, 1:] = ground_chunk
-        ground_mask = np.where(copy_chunk == 1)
+        ground_mask = (copy_chunk == 1)
         return ground_mask
     
     def manhatten_dist(self, pos1, pos2):
         return np.sum(np.abs(np.array(pos1) - np.array(pos2)))
+    
+    def g(self, parent: Node , child: Node | tuple[int, int]) -> int:
+
+        if isinstance(child, Node):
+            child_pos = child.pos
+        else: child_pos = child
+        g = self.manhatten_dist(parent.pos, child_pos) + parent.g
+        return g
+    
+
 
     def a_star(self, start_pos, final_pos, chunk):
         """Need to implement still. Will check from start position all possible nodes it can expand. It will iteratively keep expanding the nodes untill it has found exit or not able to expand further."""
@@ -91,9 +120,13 @@ class PlatformGraph():
 
         while open_set:
             score, node = hp.heappop(open_queue)
-            childs_mask = (self._is_ground(chunk) & self._reachable(node.pos, self.screen_shape))
+            child_mask = (self._is_ground(chunk) & self._reachable(node.pos, self.screen_shape))
+            childs_pos = zip(*np.where(child_mask)) # Creates tuples of (r, c) for all the child nodes
+            for r, c in childs_pos:
+                if (r,c) == final_pos:
+                    break
+                child_g = self.g(parent=node, child=(r, c))
+                child = Node(parent=node.pos, pos=(r,c), g=child_g)
+                h = child.h(final_pos=final_pos)
+                f = child.f()
             
-            
-
-
-
