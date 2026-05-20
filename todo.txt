@@ -1,0 +1,14 @@
+
+1. Intro screen to hide chunk generation lag
+   - Display a title/loading screen while chunk 0 is being generated on startup
+   - OR move generation off the main thread earlier so it's ready before the game starts
+   - Harder alternative: run chunk generation on a separate core(looked into it difficult with arcade
+
+    2. Make headless runner more smarter
+   - Currently the bot just moves right and jumps at walls/gaps... gets stuck on complex wall sequences
+   - A smarter bot would reduce reliance on A* being the sole physics validator
+   - or just go thr rl route but that would require a chunks which we know will pass 100%
+
+3. 1/30 chunks are still unplayable
+   - A* passes chunks that have paths only an ideal agent can take (somehow i still see too tall jumps)
+

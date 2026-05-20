@@ -4,7 +4,7 @@ import arcade
 from level.chunk import Chunk
 from level.tilemap import chunk_to_sprite_list
 from level.generator import generate_raw_chunk
-from validation.bfs_reachability import bfs
+from validation.pipeline import validate
 from config import TILE_SIZE
 
 class ChunkManager:
@@ -18,8 +18,7 @@ class ChunkManager:
     chunks is now generated on a background thread.
     """
 
-    LOOKAHEAD_PX  = 20 * TILE_SIZE
-    KEEP_BEHIND   = 1
+    KEEP_BEHIND = 1
 
     def __init__(self, opening_chunk: Chunk, opening_walls: arcade.SpriteList):
         self._chunk_px_width = opening_chunk.pixel_width(TILE_SIZE)
@@ -42,12 +41,10 @@ class ChunkManager:
 
         self._current_index = int(player_x // self._chunk_px_width)
 
-        # Preload the chunk ahead if not already loaded or in flight
+        # Preload the chunk ahead as soon as the player enters the current chunk
         next_index = self._current_index + 1
         if next_index not in self._loaded and next_index not in self._pending:
-            right_edge = (self._current_index + 1) * self._chunk_px_width
-            if player_x > right_edge - self.LOOKAHEAD_PX:
-                self._schedule_chunk(next_index)
+            self._schedule_chunk(next_index)
 
         # Unload chunks that are too far behind
         stale = [i for i in self._loaded
@@ -88,11 +85,18 @@ class ChunkManager:
 
     def _generate_worker(self, index: int, entry_row):
         result = None
-        for _ in range(20):
-            chunk = generate_raw_chunk(index=index, entry_row=entry_row)
-            if bfs(chunk):
-                result = chunk
-                break
+        try:
+            for _ in range(300):
+                chunk = generate_raw_chunk(index=index, entry_row=entry_row)
+                if validate(chunk):
+                    result = chunk
+                    break
+            if result is None:
+                print(f"[chunk {index}] validate failed all 300 attempts")
+        except Exception as e:
+            import traceback
+            print(f"[chunk {index}] EXCEPTION in worker: {e}")
+            traceback.print_exc()
         self._ready.put((index, result))
 
     @property
