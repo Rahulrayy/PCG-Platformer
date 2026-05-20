@@ -10,5 +10,21 @@
    - or just go thr rl route but that would require a chunks which we know will pass 100%
 
 3. 1/30 chunks are still unplayable
-   - A* passes chunks that have paths only an ideal agent can take (somehow i still see too tall jumps)
+   - A* passes chunks that have paths only an ideal agent can take (somehow i still see too tall jumps)..this depends on the ca hyperparameters too
 
+
+
+My Fav CA hyperparameters
+
+
+CHANCE_TO_START_ALIVE = 0.57 #
+DEATH_LIMIT = 4
+BIRTH_LIMIT = 5
+NUMBER_OF_STEPS = 6
+
+
+
+4. Add a json that updates with highscore and make 2 diff counter one with current score which resets and another with highscore
+
+
+5. Have a give up button if player ends up in un recoverable spot
