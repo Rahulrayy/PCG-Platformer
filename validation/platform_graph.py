@@ -16,6 +16,9 @@ class Node:
         if other.x == self.x and other.y == self.y:
             return True
         return False
+    
+    def __hash__(self):
+        return hash((self.x, self.y))
 
 
 
@@ -46,11 +49,12 @@ class PlatformGraph():
         """Possibly pre compute all the possible dx, dy combinations to save computational cost"""
         t1 = dx / self.v_x
 
+        # yₘₐₓ = v⋅t - g⋅t² / 2  
         if t1 <= self.t_max:
-            y_max = self.v_jump * t1 - (self.g * (t1 ** 2)) / 2 # fall is parabolic if t1 <= t_max
+            y_max = self.v_jump * t1 - (self.g * (t1 ** 2)) / 2 # fall is parabolic if t ≤ tₘₐₓ 
 
         else:
-            y_max = self.v_jump * self.t_max - (self.g * (self.t_max ** 2)) / 2 - self.v_max * (t1 - self.t_max) # fall becomes linear after t1 > t_max
+            y_max = self.v_jump * self.t_max - (self.g * (self.t_max ** 2)) / 2 - self.v_max * (t1 - self.t_max) # fall becomes linear after t > tₘₐₓ 
     
         return int(y_max)
     
@@ -79,7 +83,7 @@ class PlatformGraph():
         
         start_node = Node(None, start_pos, 0)
         
-        open_queue = [(0,start_node)]
+        open_queue = [(0,start_node)] # (f_score, node) pairs
         open_queue = hp.heapify(open_queue)
         open_set = set([start_node])
 
