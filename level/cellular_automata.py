@@ -13,10 +13,10 @@ GRID_WIDTH = CHUNK_WIDTH_TILES
 GRID_HEIGHT = CHUNK_HEIGHT_TILES
 
 # Parameters for cellular automata
-CHANCE_TO_START_ALIVE = 0.60#keep it at .6 for a playable level for noe makig it .45  or .5 gives a more 'interesting' level but that needs A* solvability validation just bfs does not gaurentee player solvability
+CHANCE_TO_START_ALIVE = 0.57 #keep it at .6 for a playable level for noe makig it .45  or .5 gives a more 'interesting' level but that needs A* solvability validation just bfs does not gaurentee player solvability
 DEATH_LIMIT = 4
 BIRTH_LIMIT = 5
-NUMBER_OF_STEPS = 4
+NUMBER_OF_STEPS = 6
 
 def create_grid(width, height):
     """ Create a two-dimensional grid of specified size. """
@@ -46,7 +46,8 @@ def count_alive_neighbors(grid, x, y):
                 # Edges are considered alive. Makes map more likely to appear naturally closed.
                 alive_count += 1
             elif grid[neighbor_y][neighbor_x] == 1:
-                alive_count += 1
+                if random.random() <= 0.99:
+                    alive_count += 1
     return alive_count
 
 def do_simulation_step(old_grid):
@@ -75,7 +76,8 @@ def get_raw_tile_array():
     for step in range(NUMBER_OF_STEPS):
         grid = do_simulation_step(grid)
     with np.printoptions(threshold=np.inf,linewidth=np.inf):
-        print(grid)
+        # print(grid)
+        pass
     return grid
 
 if __name__ == "__main__":

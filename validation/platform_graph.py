@@ -3,86 +3,27 @@ import numpy as np
 import heapq as hp
 
 class Node:
-    def __init__(self, parent, pos, g):
+    def __init__(self, parent, pos, g, h):
         self.x = pos[0]
         self.y = pos[1]
         self.pos = pos
         self.parent = parent
         self.g = g
-        self._h = float('inf')
-        self._f = float('inf')
+        self.h = h
+
 
     def __eq__(self, other):
         assert isinstance(other, Node), "Can only compare nodes with each other"
         if other.x == self.x and other.y == self.y:
             return True
         return False
-    
-    def __lt__(self, other) -> bool:
-        # Make shure that other is a Node 
-        if isinstance(other, Node):
-            raise ValueError("Can only compare nodes with other nodes")
-        other_f = other.get_f()
-        
-        #other.f > self.f, return True 
-        if other.get_f() > self._f:
-            return True
-        return False
-        
-    def __gt__(self, other) -> bool:
-        # Make shure that other is a Node 
-        if isinstance(other, Node):
-            raise ValueError("Can only compare nodes with other nodes")
-        other_f = other.get_f()
-        
-        #other.f < self.f, return True 
-        if other.get_f() > self._f:
-            return True
-        return False
-    
-    def __le__(self, other) -> bool:
-        # Make shure that other is a Node 
-        if isinstance(other, Node):
-            raise ValueError("Can only compare nodes with other nodes")
-        other_f = other.get_f()
-        
-        #other.f ≥ self.f, return True 
-        if other.get_f() >= self._f:
-            return True
-        return False
 
-    def __ge__(self, other: Node) -> bool:
-        # Make shure that other is a Node
-        assert isinstance(other, Node),  "Can only compare nodes with other nodes"
-        other_f = other.get_f()
+    def __lt__(self, other):
+        return (self.g + self.h) < (other.g + other.h)
 
-        # other.f ≤ self.f, return True 
-        if other.get_f() <= self._f:
-            return True
-        return False
-    
     def __hash__(self):
-        # Used for storing nodes in a set 
-        return hash((self.x, self.y))
+        return hash(self.pos)
 
-    def get_f(self):
-        return self._f
-    
-    def f(self) -> int:
-        self._f = self.h + self.g
-        return self._f
-    
-
-    def get_h(self):
-        return self._h
-    
-    def h(self, final_pos: tuple[int, int]) -> int:
-        self._h = self.manhatten(self.pos, final_pos)
-        return self._h
-    
-    
-    def manhatten(self, pos1: tuple[int, int], pos2: tuple[int, int]) -> int:
-        return np.sum(np.abs(np.array(pos1) - np.array(pos2)))
 
 
 class PlatformGraph():
@@ -112,77 +53,95 @@ class PlatformGraph():
         """Possibly pre compute all the possible dx, dy combinations to save computational cost"""
         t1 = dx / self.v_x
 
-        # yₘₐₓ = v⋅t - g⋅t² / 2  
         if t1 <= self.t_max:
-            y_max = self.v_jump * t1 - (self.g * (t1 ** 2)) / 2 # fall is parabolic if t ≤ tₘₐₓ 
+            y_max = self.v_jump * t1 - (self.g * (t1 ** 2)) / 2 # fall is parabolic if t1 <= t_max
 
         else:
-            y_max = self.v_jump * self.t_max - (self.g * (self.t_max ** 2)) / 2 - self.v_max * (t1 - self.t_max) # fall becomes linear after t > tₘₐₓ 
+            y_max = self.v_jump * self.t_max - (self.g * (self.t_max ** 2)) / 2 - self.v_max * (t1 - self.t_max) # fall becomes linear after t1 > t_max
     
         return int(y_max)
     
     def _reachable(self, pos1: tuple[int, int], grid_shape: tuple[int, int]):
         y_coords, x_coords = np.indices(grid_shape)
-        dx = x_coords - pos1[0] 
+        dx = x_coords - pos1[0]
+        dx_px = dx * config.TILE_SIZE  # ositions are in tiles; physics dict is keyed in pixels
 
-        max_y_lookup = np.array([self.max_y_dict.get(d, 0) for d in range(np.min(dx), np.max(dx) + 1)])
-        lookup_indices = dx - np.min(dx)
-        max_y_values = max_y_lookup[lookup_indices]
-        reachable_mask = (y_coords < (max_y_values + 2 * pos1[1]))
+        min_px = max(int(np.min(dx_px)), 0)                     # negative dx (leftward) not in dict, default 0
+        max_px = min(int(np.max(dx_px)), self.screen_width - 1) #clamp to precomputed range
+        max_y_lookup = np.array([self.max_y_dict.get(d, 0) for d in range(min_px, max_px + 1)])
+        lookup_indices = np.clip(dx_px, min_px, max_px) - min_px  # clip before indexing to avoid negatives
+        max_y_values = max_y_lookup[lookup_indices] / config.TILE_SIZE  #convert pixel height back to tiles
+        reachable_mask = y_coords >= (pos1[1] - max_y_values) # row 0 is top so jumping up = decreasing row
         return reachable_mask
 
-    def _is_ground(self,chunk: np.ndarray):
-        ground_chunk = chunk[:, :-1] - chunk[:, 1:]
-        copy_chunk = np.zeros_like(chunk)
-        copy_chunk[:, 1:] = ground_chunk
-        ground_mask = (copy_chunk == 1)
+    def _is_ground(self, chunk: np.ndarray):
+        ground_diff = chunk[1:, :] - chunk[:-1, :] # 1 where empty tile has solid tile directly below
+        ground_mask = np.where(ground_diff == 1)
         return ground_mask
     
+    def _arc_clear(self, pos1: tuple[int, int], pos2: tuple[int, int], chunk: np.ndarray) -> bool:
+        """Returns False if a solid tile blocks the jump arc between pos1 and pos2."""
+        for col in range(pos1[0] + 1, pos2[0]):
+            t = (col - pos1[0]) * config.TILE_SIZE / self.v_x
+            if t <= self.t_max:
+                y_offset_px = self.v_jump * t - (self.g * t ** 2) / 2
+            else:
+                y_offset_px = self.v_jump * self.t_max - (self.g * self.t_max ** 2) / 2 - self.v_max * (t - self.t_max)
+            arc_row = pos1[1] - y_offset_px / config.TILE_SIZE  # up = decreasing row
+            for row in [int(arc_row), int(arc_row) - 1]:  # check feet and head (player is 1 tile tall)
+                if 0 <= row < chunk.shape[0] and chunk[row, col] == 1:
+                    return False
+        return True
+
     def manhatten_dist(self, pos1, pos2):
         return np.sum(np.abs(np.array(pos1) - np.array(pos2)))
-    
-    def calc_g(self, parent: Node , child: Node | tuple[int, int]) -> int:
-
-        if isinstance(child, Node):
-            child_pos = child.pos
-        else: child_pos = child
-        g = self.manhatten_dist(parent.pos, child_pos) + parent.g
-        return g
-    
-
 
     def a_star(self, start_pos, final_pos, chunk):
-        """Need to implement still. Will check from start position all possible nodes it can expand. It will iteratively keep expanding the nodes untill it has found exit or not able to expand further."""
-        
-        start_node = Node(start_pos, start_pos, 0)
-        
-        open_queue = [(0,start_node)] # (f_score, node) pairs
-        open_queue = hp.heapify(open_queue)
-        open_set = {start_node: 0}
+        """Will check from start position all possible nodes it can expand......it will iteratively keep expanding the nodes untill it has found exit or not able to expand further."""
 
-        closed_set = {}
+        start_node = Node(None, start_pos, 0, self.manhatten_dist(start_pos, final_pos))
 
-        while open_set:
+        open_queue = [(start_node.g + start_node.h, start_node)]
+        hp.heapify(open_queue)
+        open_set = {start_node}
+
+        closed_set = set()
+
+        ground_rows, ground_cols = self._is_ground(chunk)
+        child_positions = [(int(c), int(r)) for r, c in zip(ground_rows, ground_cols)]
+
+        while open_queue:
             score, node = hp.heappop(open_queue)
-            child_mask = (self._is_ground(chunk) & self._reachable(node.pos, self.screen_shape))
-            childs_pos = zip(*np.where(child_mask)) # Creates tuples of (r, c) for all the child nodes
 
-            for r, c in childs_pos:
-                if (r,c) == final_pos:
-                    break
-                child_g = self.calc_g(parent=node, child=(r, c))
-                child = Node(parent=node.pos, pos=(r,c), g=child_g)
-                h = child.h(final_pos=final_pos)
-                f = child.f()
+            if node.pos in closed_set:
+                open_set.discard(node)  # remove stale duplicate so open_set stays accurate
+                continue
 
-                if child in open_set and open_set[child] < f:
-                    pass
-                
-                if child in closed_set and closed_set[child] < f:
-                    pass
+            if node.x == final_pos[0]:  # any ground tile on the right edge column is a valid exit
+                return True
 
-                open_set[child] = f
-                hp.heappush(open_queue, child)
+            open_set.discard(node)
+            closed_set.add(node.pos)
+
+            reachable_mask = self._reachable(node.pos, chunk.shape)
+
+            for pos in child_positions:
+                if pos in closed_set:
+                    continue
+                if not reachable_mask[pos[1], pos[0]]:
+                    continue
+                if pos[1] < node.pos[1] and not self._arc_clear(node.pos, pos, chunk):  # upward jumps only
+                    continue
+
+                g = node.g + self.manhatten_dist(node.pos, pos)
+                h = self.manhatten_dist(pos, final_pos)
+                child = Node(node, pos, g, h)
+
+                if child not in open_set:
+                    open_set.add(child)
+                    hp.heappush(open_queue, (g + h, child))
+
+        return False
 
 
-            
+
