@@ -9,8 +9,8 @@ class Node:
         self.pos = pos
         self.parent = parent
         self.g = g
-        self._h = None
-        self._f = None
+        self._h = float('inf')
+        self._f = float('inf')
 
     def __eq__(self, other):
         assert isinstance(other, Node), "Can only compare nodes with each other"
@@ -18,7 +18,51 @@ class Node:
             return True
         return False
     
+    def __lt__(self, other) -> bool:
+        # Make shure that other is a Node 
+        if isinstance(other, Node):
+            raise ValueError("Can only compare nodes with other nodes")
+        other_f = other.get_f()
+        
+        #other.f > self.f, return True 
+        if other.get_f() > self._f:
+            return True
+        return False
+        
+    def __gt__(self, other) -> bool:
+        # Make shure that other is a Node 
+        if isinstance(other, Node):
+            raise ValueError("Can only compare nodes with other nodes")
+        other_f = other.get_f()
+        
+        #other.f < self.f, return True 
+        if other.get_f() > self._f:
+            return True
+        return False
+    
+    def __le__(self, other) -> bool:
+        # Make shure that other is a Node 
+        if isinstance(other, Node):
+            raise ValueError("Can only compare nodes with other nodes")
+        other_f = other.get_f()
+        
+        #other.f ≥ self.f, return True 
+        if other.get_f() >= self._f:
+            return True
+        return False
+
+    def __ge__(self, other: Node) -> bool:
+        # Make shure that other is a Node
+        assert isinstance(other, Node),  "Can only compare nodes with other nodes"
+        other_f = other.get_f()
+
+        # other.f ≤ self.f, return True 
+        if other.get_f() <= self._f:
+            return True
+        return False
+    
     def __hash__(self):
+        # Used for storing nodes in a set 
         return hash((self.x, self.y))
 
     def get_f(self):
@@ -97,7 +141,7 @@ class PlatformGraph():
     def manhatten_dist(self, pos1, pos2):
         return np.sum(np.abs(np.array(pos1) - np.array(pos2)))
     
-    def g(self, parent: Node , child: Node | tuple[int, int]) -> int:
+    def calc_g(self, parent: Node , child: Node | tuple[int, int]) -> int:
 
         if isinstance(child, Node):
             child_pos = child.pos
@@ -110,23 +154,35 @@ class PlatformGraph():
     def a_star(self, start_pos, final_pos, chunk):
         """Need to implement still. Will check from start position all possible nodes it can expand. It will iteratively keep expanding the nodes untill it has found exit or not able to expand further."""
         
-        start_node = Node(None, start_pos, 0)
+        start_node = Node(start_pos, start_pos, 0)
         
         open_queue = [(0,start_node)] # (f_score, node) pairs
         open_queue = hp.heapify(open_queue)
-        open_set = set([start_node])
+        open_set = {start_node: 0}
 
-        closed_set = set({})
+        closed_set = {}
 
         while open_set:
             score, node = hp.heappop(open_queue)
             child_mask = (self._is_ground(chunk) & self._reachable(node.pos, self.screen_shape))
             childs_pos = zip(*np.where(child_mask)) # Creates tuples of (r, c) for all the child nodes
+
             for r, c in childs_pos:
                 if (r,c) == final_pos:
                     break
-                child_g = self.g(parent=node, child=(r, c))
+                child_g = self.calc_g(parent=node, child=(r, c))
                 child = Node(parent=node.pos, pos=(r,c), g=child_g)
                 h = child.h(final_pos=final_pos)
                 f = child.f()
+
+                if child in open_set and open_set[child] < f:
+                    pass
+                
+                if child in closed_set and closed_set[child] < f:
+                    pass
+
+                open_set[child] = f
+                hp.heappush(open_queue, child)
+
+
             
