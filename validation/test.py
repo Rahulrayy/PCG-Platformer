@@ -1,6 +1,4 @@
-import numpy as np
 
+dict = {1: 2}
 
-arr1 = np.asarray([[1,2], [3,4]])
-mask = np.where(arr1 < 3)
-print(mask)
+print(dict.get(0))
