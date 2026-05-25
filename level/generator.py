@@ -46,4 +46,5 @@ def generate_raw_chunk(index: int, entry_row: int | None = None) -> Chunk:
 
     chunk = Chunk(tiles=tiles, index=index, entry_row=actual_entry_row)
     chunk.exit_row = exit_row
+    chunk.tiles[0, :] = 1
     return chunk
