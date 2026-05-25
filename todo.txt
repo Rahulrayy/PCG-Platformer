@@ -1,4 +1,3 @@
 PLAY AND TEST---make sure not 1 chunk is impossible
 
 
-add a self end game button(for when stuck in unrecoverable positions

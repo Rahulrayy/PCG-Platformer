@@ -74,6 +74,10 @@ class GameWindow(arcade.Window):
             self.player.try_jump()
         if key == arcade.key.H:
             self._toggle_ghost()
+        if key == arcade.key.R:
+            self.score.save()
+            self.score.reset()
+            self.setup()
 
     def on_key_release(self, key, modifiers):
         self.keys[key] = False
@@ -134,11 +138,10 @@ class GameWindow(arcade.Window):
 
         hint = "H: Hide ghost" if self._show_ghost else "H: Show ghost"
         arcade.draw_text(
-            f"W: Jump | A/D: Move | {hint}",
+            f"W: Jump | A/D: Move | R: Reset | {hint}",
             20, SCREEN_HEIGHT - 90,
             (160, 160, 160), 13
         )
-
         arcade.draw_text(
             f"FPS: {self._fps:.0f}",
             SCREEN_WIDTH - 80, SCREEN_HEIGHT - 40,
