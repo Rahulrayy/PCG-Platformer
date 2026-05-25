@@ -34,7 +34,9 @@ class PlatformGraph():
         self.g = config.GRAVITY
         self.v_x = config.MOVE_SPEED
         self.v_max = config.MAX_FALL_SPEED
-        self.t_max = (self.v_jump + self.v_max) / self.g
+        self.t_max  = (self.v_jump + self.v_max) / self.g
+        self.t_rise = self.v_jump / self.g                  # time to arc peak
+        self.peak_px = int(self.v_x * self.t_rise)          # horizontal distance at arc peak
 
         self.screen_width = config.SCREEN_WIDTH
         self.screen_height = config.SCREEN_HEIGHT
@@ -43,6 +45,8 @@ class PlatformGraph():
         # Pre calculates all the possible
         self.max_y_dict = {}
         self.calc_max_y(np.arange(self.screen_width))
+        # flat array version for O(1) slice in _reachable instead of per-call dict rebuild
+        self._max_y_arr = np.array([self.max_y_dict[d] for d in range(self.screen_width)])
 
     def calc_max_y(self, arr_x):
         for xi in arr_x:
@@ -68,7 +72,7 @@ class PlatformGraph():
 
         min_px = max(int(np.min(dx_px)), 0)                     # negative dx (leftward) not in dict, default 0
         max_px = min(int(np.max(dx_px)), self.screen_width - 1) #clamp to precomputed range
-        max_y_lookup = np.array([self.max_y_dict.get(d, 0) for d in range(min_px, max_px + 1)])
+        max_y_lookup = self._max_y_arr[min_px:max_px + 1]
         lookup_indices = np.clip(dx_px, min_px, max_px) - min_px  # clip before indexing to avoid negatives
         max_y_values = max_y_lookup[lookup_indices] / config.TILE_SIZE  #convert pixel height back to tiles
         reachable_mask = y_coords >= (pos1[1] - max_y_values) # row 0 is top so jumping up = decreasing row
@@ -96,7 +100,7 @@ class PlatformGraph():
     def manhatten_dist(self, pos1, pos2):
         return np.sum(np.abs(np.array(pos1) - np.array(pos2)))
 
-    def a_star(self, start_pos, final_pos, chunk):
+    def a_star(self, start_pos, final_pos, chunk, return_path: bool = False):
         """Will check from start position all possible nodes it can expand......it will iteratively keep expanding the nodes untill it has found exit or not able to expand further."""
 
         start_node = Node(None, start_pos, 0, self.manhatten_dist(start_pos, final_pos))
@@ -109,6 +113,10 @@ class PlatformGraph():
 
         ground_rows, ground_cols = self._is_ground(chunk)
         child_positions = [(int(c), int(r)) for r, c in zip(ground_rows, ground_cols)]
+        if not child_positions:
+            return [] if return_path else False
+        _gx = np.array([p[0] for p in child_positions])
+        _gy = np.array([p[1] for p in child_positions])
 
         while open_queue:
             score, node = hp.heappop(open_queue)
@@ -118,20 +126,35 @@ class PlatformGraph():
                 continue
 
             if node.x == final_pos[0]:  # any ground tile on the right edge column is a valid exit
+                if return_path:
+                    path = []
+                    n = node
+                    while n is not None:
+                        path.append(n.pos)
+                        n = n.parent
+                    path.reverse()
+                    return path
                 return True
 
             open_set.discard(node)
             closed_set.add(node.pos)
 
             reachable_mask = self._reachable(node.pos, chunk.shape)
+            # vectorised: index the mask at all ground positions in one shot, iterate only reachable ones
+            reachable_flags = reachable_mask[_gy, _gx]
 
-            for pos in child_positions:
+            for i in np.where(reachable_flags)[0]:
+                pos = child_positions[i]
                 if pos in closed_set:
                     continue
-                if not reachable_mask[pos[1], pos[0]]:
-                    continue
-                if pos[1] < node.pos[1] and not self._arc_clear(node.pos, pos, chunk):  # upward jumps only
-                    continue
+                if pos[1] < node.pos[1]:  # upward jump
+                    dx_px = (pos[0] - node.pos[0]) * config.TILE_SIZE
+                    # adjacent 1-tile step: player wall-climbs, no arc constraint applies
+                    adjacent_step = (node.pos[1] - pos[1] == 1 and pos[0] == node.pos[0] + 1)
+                    if not adjacent_step and dx_px < self.peak_px:
+                        continue  # player still rising at destination, cannot land
+                    if not self._arc_clear(node.pos, pos, chunk):
+                        continue
 
                 g = node.g + self.manhatten_dist(node.pos, pos)
                 h = self.manhatten_dist(pos, final_pos)
@@ -141,7 +164,7 @@ class PlatformGraph():
                     open_set.add(child)
                     hp.heappush(open_queue, (g + h, child))
 
-        return False
+        return [] if return_path else False
 
 
 
