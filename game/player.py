@@ -1,4 +1,5 @@
 import arcade
+import os
 from config import TILE_SIZE, MOVE_SPEED, JUMP_SPEED, CHUNK_WIDTH_TILES
 
 class Player(arcade.Sprite):
@@ -6,7 +7,7 @@ class Player(arcade.Sprite):
         super().__init__()
 
         self.texture_list = arcade.load_spritesheet(
-            "assets\\Char_Robot.png",
+            os.path.join("assets", "Char_Robot.png"),
             sprite_width=48, 
             sprite_height=48, 
             columns=8, 
