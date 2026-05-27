@@ -1,147 +1,231 @@
-import config 
-import numpy as np
+import config
+import math
 import heapq as hp
+import numpy as np
+
 
 class Node:
-    def __init__(self, parent, pos, g, h):
-        self.x = pos[0]
-        self.y = pos[1]
-        self.pos = pos
-        self.parent = parent
-        self.g = g
-        self.h = h
+    """
+    Search state: tile position + vertical velocity.
 
+    Velocity is rounded to the nearest px/s so that floating-point noise does
+    not fragment physically identical states into distinct nodes.
+    """
+
+    def __init__(self, parent, pos: tuple[int, int], vy: float, g_cost: float, h_cost: float):
+        self.pos    = pos       # (col, row) in tile space
+        self.vy     = vy        # vertical velocity px/s — positive means upward
+        self.parent = parent
+        self.g      = g_cost
+        self.h      = h_cost
+
+    def state(self) -> tuple:
+        """Canonical key used for closed-set membership and cost tracking."""
+        return (self.pos, round(self.vy))   # round to 1 px/s bins
 
     def __eq__(self, other):
-        assert isinstance(other, Node), "Can only compare nodes with each other"
-        if other.x == self.x and other.y == self.y:
-            return True
-        return False
+        return isinstance(other, Node) and self.state() == other.state()
+
+    def __hash__(self):
+        return hash(self.state())
 
     def __lt__(self, other):
         return (self.g + self.h) < (other.g + other.h)
 
-    def __hash__(self):
-        return hash(self.pos)
 
+class PlatformGraph:
+    """
+    A* pathfinder that encodes physics state (position + vertical velocity)
+    directly into each node.
 
+    Neighbour generation simulates one tile-column of movement at a time,
+    so there is no need for precomputed reachability tables (_reachable /
+    max_y_dict) or separate arc-clearance passes (_arc_clear).  Walking off
+    a ledge is handled naturally: from a ground tile the character can either
+    jump (vy = JUMP_SPEED) or walk (vy = 0); gravity takes over as soon as
+    there is no floor in the next column.
 
-class PlatformGraph():
-    """Class will generate a graph from using the game physics and the map"""
+    Horizontal actions each step: move left (dx = -1), stand still (dx = 0),
+    move right (dx = +1).  'dt' is fixed as TILE_SIZE / MOVE_SPEED regardless
+    of whether the character actually moves horizontally — standing still simply
+    means one dt elapses while the column stays the same.  This lets the
+    character jump straight up to reach platforms directly above.
+    """
 
     def __init__(self):
-        self.v_jump = config.JUMP_SPEED
-        self.g = config.GRAVITY
-        self.v_x = config.MOVE_SPEED
-        self.v_max = config.MAX_FALL_SPEED
-        self.t_max = (self.v_jump + self.v_max) / self.g
+        self.v_jump  = config.JUMP_SPEED
+        self.g_accel = config.GRAVITY
+        self.v_x     = config.MOVE_SPEED
+        self.v_max   = config.MAX_FALL_SPEED
+        self.tile    = config.TILE_SIZE
 
-        self.screen_width = config.SCREEN_WIDTH
+        self.screen_width  = config.SCREEN_WIDTH
         self.screen_height = config.SCREEN_HEIGHT
-        self.screen_shape = (config.SCREEN_HEIGHT, config.SCREEN_WIDTH)
 
-        # Pre calculates all the possible
-        self.max_y_dict = {}
-        self.calc_max_y(np.arange(self.screen_width))
+        # Time the character spends crossing a single tile column
+        self.dt = self.tile / self.v_x
 
-    def calc_max_y(self, arr_x):
-        for xi in arr_x:
-            max_y = self._max_y(dx=xi)
-            self.max_y_dict[xi] = max_y
+    # ------------------------------------------------------------------ #
+    #  Physics primitives                                                   #
+    # ------------------------------------------------------------------ #
 
-    def _max_y(self, dx: int) -> int:
-        """Possibly pre compute all the possible dx, dy combinations to save computational cost"""
-        t1 = dx / self.v_x
+    def _step_vy(self, vy: float) -> float:
+        """Apply one tick of gravity, clamped to terminal (downward) velocity."""
+        return max(vy - self.g_accel * self.dt, -self.v_max)
 
-        if t1 <= self.t_max:
-            y_max = self.v_jump * t1 - (self.g * (t1 ** 2)) / 2 # fall is parabolic if t1 <= t_max
+    def _row_after_step(self, row: int, vy: float) -> float:
+        """
+        Fractional tile row after crossing one column with initial upward velocity vy.
+        Rows increase downward, so positive dy_px (upward motion) lowers the row index.
+        """
+        dy_px = vy * self.dt - 0.5 * self.g_accel * self.dt ** 2
+        return row - dy_px / self.tile
 
-        else:
-            y_max = self.v_jump * self.t_max - (self.g * (self.t_max ** 2)) / 2 - self.v_max * (t1 - self.t_max) # fall becomes linear after t1 > t_max
-    
-        return int(y_max)
-    
-    def _reachable(self, pos1: tuple[int, int], grid_shape: tuple[int, int]):
-        y_coords, x_coords = np.indices(grid_shape)
-        dx = x_coords - pos1[0]
-        dx_px = dx * config.TILE_SIZE  # ositions are in tiles; physics dict is keyed in pixels
+    def _solid(self, col: int, row: int, chunk: np.ndarray) -> bool:
+        r, c = int(row), int(col)
+        return 0 <= r < chunk.shape[0] and 0 <= c < chunk.shape[1] and chunk[r, c] == 1
 
-        min_px = max(int(np.min(dx_px)), 0)                     # negative dx (leftward) not in dict, default 0
-        max_px = min(int(np.max(dx_px)), self.screen_width - 1) #clamp to precomputed range
-        max_y_lookup = np.array([self.max_y_dict.get(d, 0) for d in range(min_px, max_px + 1)])
-        lookup_indices = np.clip(dx_px, min_px, max_px) - min_px  # clip before indexing to avoid negatives
-        max_y_values = max_y_lookup[lookup_indices] / config.TILE_SIZE  #convert pixel height back to tiles
-        reachable_mask = y_coords >= (pos1[1] - max_y_values) # row 0 is top so jumping up = decreasing row
-        return reachable_mask
+    def _on_ground(self, col: int, row: int, chunk: np.ndarray) -> bool:
+        """Current tile is empty and the tile directly below is solid."""
+        return not self._solid(col, row, chunk) and self._solid(col, row + 1, chunk)
 
-    def _is_ground(self, chunk: np.ndarray):
-        ground_diff = chunk[1:, :] - chunk[:-1, :] # 1 where empty tile has solid tile directly below
-        ground_mask = np.where(ground_diff == 1)
-        return ground_mask
-    
-    def _arc_clear(self, pos1: tuple[int, int], pos2: tuple[int, int], chunk: np.ndarray) -> bool:
-        """Returns False if a solid tile blocks the jump arc between pos1 and pos2."""
-        for col in range(pos1[0] + 1, pos2[0]):
-            t = (col - pos1[0]) * config.TILE_SIZE / self.v_x
-            if t <= self.t_max:
-                y_offset_px = self.v_jump * t - (self.g * t ** 2) / 2
-            else:
-                y_offset_px = self.v_jump * self.t_max - (self.g * self.t_max ** 2) / 2 - self.v_max * (t - self.t_max)
-            arc_row = pos1[1] - y_offset_px / config.TILE_SIZE  # up = decreasing row
-            for row in [int(arc_row), int(arc_row) - 1]:  # check feet and head (player is 1 tile tall)
-                if 0 <= row < chunk.shape[0] and chunk[row, col] == 1:
-                    return False
+    def _sweep_clear(self, col: int, row_src: float, row_dst: float, chunk: np.ndarray) -> bool:
+        """
+        Sweep column `col` between row_src and row_dst.
+        Returns False if any solid tile lies in the swept range, preventing
+        the character from tunnelling through thin floors or ceilings.
+        """
+        r_lo = int(math.floor(min(row_src, row_dst)))
+        r_hi = int(math.ceil (max(row_src, row_dst)))
+        for r in range(max(r_lo, 0), min(r_hi + 1, chunk.shape[0])):
+            if chunk[r, col] == 1:
+                return False
         return True
 
-    def manhatten_dist(self, pos1, pos2):
-        return np.sum(np.abs(np.array(pos1) - np.array(pos2)))
+    # ------------------------------------------------------------------ #
+    #  Neighbour expansion                                                  #
+    # ------------------------------------------------------------------ #
 
-    def a_star(self, start_pos, final_pos, chunk):
-        """Will check from start position all possible nodes it can expand......it will iteratively keep expanding the nodes untill it has found exit or not able to expand further."""
+    def _neighbours(self, node: Node, chunk: np.ndarray):
+        """
+        Yield (child_pos, child_vy) pairs reachable in one time step (dt).
 
-        start_node = Node(None, start_pos, 0, self.manhatten_dist(start_pos, final_pos))
+        Horizontal actions
+        ------------------
+        dx = -1  move left  — new_col = col - 1
+        dx =  0  stand still — new_col = col; one dt passes, vertical physics applies
+        dx = +1  move right  — new_col = col + 1
 
-        open_queue = [(start_node.g + start_node.h, start_node)]
-        hp.heapify(open_queue)
-        open_set = {start_node}
+        Vertical actions (combined with any horizontal choice)
+        -------------------------------------------------------
+        On ground → walk/idle  : vy stays 0; character falls if no floor below new_col.
+        On ground → jump       : vy is set to JUMP_SPEED.
+        In the air             : only the current vy continues (no mid-air jumps).
 
-        closed_set = set()
+        Standing still on solid ground (vy=0 → vy=0, same tile) is detected and
+        skipped because it is never part of an optimal path and would pollute the heap.
+        """
+        col, row = node.pos
+        on_ground = self._on_ground(col, row, chunk)
 
-        ground_rows, ground_cols = self._is_ground(chunk)
-        child_positions = [(int(c), int(r)) for r, c in zip(ground_rows, ground_cols)]
+        vy_starts = [node.vy]
+        if on_ground:
+            vy_starts.append(self.v_jump)   # jump is an extra action from ground
 
-        while open_queue:
-            score, node = hp.heappop(open_queue)
-
-            if node.pos in closed_set:
-                open_set.discard(node)  # remove stale duplicate so open_set stays accurate
+        for dx in (-1, 0, 1):
+            new_col = col + dx
+            if not (0 <= new_col < chunk.shape[1]):
                 continue
 
-            if node.x == final_pos[0]:  # any ground tile on the right edge column is a valid exit
+            for vy0 in vy_starts:
+                new_row_f = self._row_after_step(row, vy0)
+                new_row   = int(round(new_row_f))
+
+                if not (0 <= new_row < chunk.shape[0]):
+                    continue                         # out of bounds vertically
+
+                if self._solid(new_col, new_row, chunk):
+                    continue                         # destination tile is solid
+
+                # For dx=0: sweep the current column for ceilings/floors between
+                # current row and new row (handles jumping straight up, falling in place).
+                # For dx!=0: sweep the destination column as before.
+                if not self._sweep_clear(new_col, row, new_row_f, chunk):
+                    continue                         # arc passes through a wall/floor
+
+                new_vy = self._step_vy(vy0)
+
+                if self._on_ground(new_col, new_row, chunk):
+                    new_vy = 0.0                     # landed — reset vertical velocity
+
+                # Skip the trivial no-op: standing still on the ground changes nothing
+                if (new_col, new_row) == node.pos and new_vy == node.vy:
+                    continue
+
+                yield (new_col, new_row), new_vy
+
+    # ------------------------------------------------------------------ #
+    #  Heuristic                                                            #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _manhattan(pos1: tuple, pos2: tuple) -> int:
+        return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
+
+    # ------------------------------------------------------------------ #
+    #  A* search                                                            #
+    # ------------------------------------------------------------------ #
+
+    def a_star(self, start_pos: tuple[int, int], final_pos: tuple[int, int], chunk: np.ndarray) -> bool:
+        """
+        Return True if a physics-valid path from start_pos to the column of
+        final_pos exists, False otherwise.
+        """
+        col0, row0 = start_pos
+        # If the start position is already airborne, give it a small initial
+        # downward velocity (one gravity tick from rest) rather than zero.
+        start_vy = 0.0 if self._on_ground(col0, row0, chunk) else self._step_vy(0.0)
+
+        start = Node(
+            parent = None,
+            pos    = start_pos,
+            vy     = start_vy,
+            g_cost = 0,
+            h_cost = self._manhattan(start_pos, final_pos),
+        )
+
+        open_pq: list               = [(start.g + start.h, start)]
+        best_g:  dict[tuple, float] = {start.state(): 0.0}
+        closed:  set[tuple]         = set()
+
+        while open_pq:
+            _, node = hp.heappop(open_pq)
+            state   = node.state()
+
+            if state in closed:
+                continue
+            closed.add(state)
+
+            if node.pos[0] == final_pos[0]:     # reached the target column
                 return True
 
-            open_set.discard(node)
-            closed_set.add(node.pos)
+            for child_pos, child_vy in self._neighbours(node, chunk):
+                child_g = node.g + self._manhattan(node.pos, child_pos)
+                child   = Node(
+                    parent = node,
+                    pos    = child_pos,
+                    vy     = child_vy,
+                    g_cost = child_g,
+                    h_cost = self._manhattan(child_pos, final_pos),
+                )
+                cstate = child.state()
 
-            reachable_mask = self._reachable(node.pos, chunk.shape)
-
-            for pos in child_positions:
-                if pos in closed_set:
+                if cstate in closed:
                     continue
-                if not reachable_mask[pos[1], pos[0]]:
-                    continue
-                if pos[1] < node.pos[1] and not self._arc_clear(node.pos, pos, chunk):  # upward jumps only
-                    continue
 
-                g = node.g + self.manhatten_dist(node.pos, pos)
-                h = self.manhatten_dist(pos, final_pos)
-                child = Node(node, pos, g, h)
-
-                if child not in open_set:
-                    open_set.add(child)
-                    hp.heappush(open_queue, (g + h, child))
+                # Only push if this is the cheapest known route to this state
+                if cstate not in best_g or child_g < best_g[cstate]:
+                    best_g[cstate] = child_g
+                    hp.heappush(open_pq, (child_g + child.h, child))
 
         return False
-
-
-

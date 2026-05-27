@@ -1,4 +1,5 @@
 import arcade
+import os
 
 from config import (
     SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE,
@@ -32,7 +33,7 @@ class GameWindow(arcade.Window):
         self.background_list = arcade.SpriteList()
         
         bg_textures = arcade.load_spritesheet(
-            "assets\\Background_n_details.png",
+            os.path.join("assets", "Background_n_details.png"),
             sprite_width=64, 
             sprite_height=64, 
             columns=4, 
