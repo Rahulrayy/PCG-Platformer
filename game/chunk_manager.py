@@ -1,11 +1,12 @@
-import threading
-import queue as _queue
+import os
+from concurrent.futures import ProcessPoolExecutor
 import arcade
 from level.chunk import Chunk
 from level.tilemap import chunk_to_sprite_list
-from level.generator import generate_raw_chunk
-from validation.pipeline import validate
+from game.chunk_worker import generate_and_validate
 from config import TILE_SIZE
+
+_N_WORKERS = min(3, max(1, (os.cpu_count() or 2) - 1))
 
 class ChunkManager:
     """
@@ -13,9 +14,10 @@ class ChunkManager:
     Rolling window keeps
       1 chunk behind  the player
        current chunk
-       1 chunk ahead   the player  (preloaded before the player reaches it)
+       2 chunks ahead  the player  (preloaded before the player reaches them)
 
-    chunks is now generated on a background thread.
+    Chunks are generated on separate processes (bypasses the GIL).
+    _N_WORKERS processes race each other per chunk; first valid result wins.
     """
 
     KEEP_BEHIND = 1
@@ -25,28 +27,27 @@ class ChunkManager:
 
         self.walls = arcade.SpriteList(use_spatial_hash=True)
 
-        # Chunk 0 sprites sit at world offset 0
         self._loaded: dict[int, dict] = {}
         self._register_chunk(0, opening_chunk, list(opening_walls))
         for sprite in opening_walls:
             self.walls.append(sprite)
 
         self._current_index = 0
-        self._pending: set[int] = set()           # gen indies on a diff thered
-        self._ready: _queue.Queue = _queue.Queue() # (index, chunk  from workers
+        self._pending: set[int] = set()
+        self._futures: dict[int, list] = {}   # index -> [Future, ...]
+        self._executor = ProcessPoolExecutor(max_workers=_N_WORKERS)
 
     def update(self, player_x: float):
-        # Finalize any chunks whose background generation finished
         self._finalize_ready()
 
         self._current_index = int(player_x // self._chunk_px_width)
 
-        # Preload the chunk ahead as soon as the player enters the current chunk
-        next_index = self._current_index + 1
-        if next_index not in self._loaded and next_index not in self._pending:
-            self._schedule_chunk(next_index)
+        # Preload the two chunks ahead as soon as prerequisites are available
+        for ahead in (1, 2):
+            ni = self._current_index + ahead
+            if ni not in self._loaded and ni not in self._pending:
+                self._schedule_chunk(ni)
 
-        # Unload chunks that are too far behind
         stale = [i for i in self._loaded
                  if i < self._current_index - self.KEEP_BEHIND]
         for i in stale:
@@ -54,50 +55,57 @@ class ChunkManager:
 
     def _finalize_ready(self):
         """main game thread only for gui."""
-        while True:
-            try:
-                index, chunk = self._ready.get_nowait()
-            except _queue.Empty:
-                break
-            self._pending.discard(index)
-            if chunk is None or index in self._loaded:
+        to_remove = []
+        for index, futures in self._futures.items():
+            done_futures = [f for f in futures if f.done()]
+            if not done_futures:
                 continue
-            offset_x  = index * self._chunk_px_width
-            raw_walls = chunk_to_sprite_list(chunk)
-            sprites = []
-            for sprite in raw_walls:
-                sprite.left += offset_x
-                self.walls.append(sprite)
-                sprites.append(sprite)
-            self._register_chunk(index, chunk, sprites)
+
+            # Check if any finished worker found a valid chunk
+            chunk, attempt = None, None
+            for f in done_futures:
+                try:
+                    c, a = f.result()
+                    if c is not None and chunk is None:
+                        chunk, attempt = c, a
+                except Exception as e:
+                    import traceback
+                    print(f"[chunk {index}] EXCEPTION in worker: {e}")
+                    traceback.print_exc()
+
+            if chunk is not None:
+                to_remove.append(index)
+                for f in futures:
+                    f.cancel()
+                self._pending.discard(index)
+                if index not in self._loaded:
+                    print(f"[chunk {index}] passed validation on attempt {attempt}")
+                    offset_x = index * self._chunk_px_width
+                    raw_walls = chunk_to_sprite_list(chunk)
+                    sprites = []
+                    for sprite in raw_walls:
+                        sprite.left += offset_x
+                        self.walls.append(sprite)
+                        sprites.append(sprite)
+                    self._register_chunk(index, chunk, sprites)
+            elif all(f.done() for f in futures):
+                to_remove.append(index)
+                self._pending.discard(index)
+                print(f"[chunk {index}] validate failed all attempts")
+
+        for index in to_remove:
+            self._futures.pop(index, None)
 
     def _schedule_chunk(self, index: int):
         prev = self._loaded.get(index - 1, {}).get('chunk')
         if prev is None and index > 0:
-            return
+            return   # prerequisite not loaded yet; update() will retry next frame
         entry = prev.exit_row if prev else None
         self._pending.add(index)
-        threading.Thread(
-            target=self._generate_worker,
-            args=(index, entry),
-            daemon=True,
-        ).start()
-
-    def _generate_worker(self, index: int, entry_row):
-        result = None
-        try:
-            for _ in range(300):
-                chunk = generate_raw_chunk(index=index, entry_row=entry_row)
-                if validate(chunk):
-                    result = chunk
-                    break
-            if result is None:
-                print(f"[chunk {index}] validate failed all 300 attempts")
-        except Exception as e:
-            import traceback
-            print(f"[chunk {index}] EXCEPTION in worker: {e}")
-            traceback.print_exc()
-        self._ready.put((index, result))
+        self._futures[index] = [
+            self._executor.submit(generate_and_validate, index, entry)
+            for _ in range(_N_WORKERS)
+        ]
 
     @property
     def world_pixel_width(self) -> int:

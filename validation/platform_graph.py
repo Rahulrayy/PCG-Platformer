@@ -59,6 +59,7 @@ class PlatformGraph:
         self.v_max   = config.MAX_FALL_SPEED
         self.tile    = config.TILE_SIZE
 
+
         self.screen_width  = config.SCREEN_WIDTH
         self.screen_height = config.SCREEN_HEIGHT
 

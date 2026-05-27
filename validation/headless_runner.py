@@ -98,6 +98,18 @@ def run_headless(chunk: Chunk) -> bool:
             vy = _JUMP
             on_ground = False
 
+        # If stuck on the ground for too long, try jumping to get unstuck
+        if cx <= best_x + 0.5:
+            stuck += 1
+            if stuck >= _STUCK_STEPS:
+                return False
+            if on_ground and stuck % 30 == 0:
+                vy = _JUMP
+                on_ground = False
+        else:
+            best_x = cx
+            stuck  = 0
+
         #ggravity
         vy -= _GRAVITY * _DT
         if vy < -_MAX_FALL:
@@ -126,9 +138,90 @@ def run_headless(chunk: Chunk) -> bool:
                 vy = 0.0
                 break
 
-
         if cy + _HH < 0:
             return False
 
+    return False
 
-    return True
+
+def record_headless(chunk: Chunk) -> list[tuple[float, float]]:
+    """
+    Same simulation as run_headless but returns a list of (cx, cy) pixel positions
+    sampled every 10 steps. Returns an empty list if the bot fails to reach the exit.
+    Positions are in chunk-local pixel coordinates.
+    """
+    rows, cols = chunk.tiles.shape
+    tiles = chunk.tiles
+
+    entry_row = chunk.entry_row
+    floor_row = entry_row + 1
+    while floor_row < rows and tiles[floor_row, 0] != SOLID:
+        floor_row += 1
+    if floor_row >= rows:
+        return []
+    floor_top = (rows - floor_row) * _TS
+
+    cx: float = _TS / 2.0
+    cy: float = floor_top + _HH + 1.0
+    vx: float = 0.0
+    vy: float = 0.0
+    on_ground = False
+
+    goal_x = (cols - 1) * _TS
+    best_x  = cx
+    stuck   = 0
+
+    positions: list[tuple[float, float]] = []
+
+    for step in range(_MAX_STEPS):
+        if cx + _HW >= goal_x:
+            return positions
+
+        if step % 10 == 0:
+            positions.append((cx, cy))
+
+        vx = _MOVE
+        if on_ground and _should_jump(cx, cy, tiles, rows, cols):
+            vy = _JUMP
+            on_ground = False
+
+        if cx <= best_x + 0.5:
+            stuck += 1
+            if stuck >= _STUCK_STEPS:
+                return []
+            if on_ground and stuck % 30 == 0:
+                vy = _JUMP
+                on_ground = False
+        else:
+            best_x = cx
+            stuck  = 0
+
+        vy -= _GRAVITY * _DT
+        if vy < -_MAX_FALL:
+            vy = -_MAX_FALL
+
+        cx += vx * _DT
+        for r, c in _nearby_solid(cx, cy, tiles):
+            tl, tr, tb, tt = _tile_rect(r, c, rows)
+            if cx - _HW < tr and cx + _HW > tl and cy - _HH < tt and cy + _HH > tb:
+                cx = tl - _HW if vx > 0 else tr + _HW
+                vx = 0.0
+                break
+
+        on_ground = False
+        cy += vy * _DT
+        for r, c in _nearby_solid(cx, cy, tiles):
+            tl, tr, tb, tt = _tile_rect(r, c, rows)
+            if cx - _HW < tr and cx + _HW > tl and cy - _HH < tt and cy + _HH > tb:
+                if vy <= 0:
+                    cy = tt + _HH
+                    on_ground = True
+                else:
+                    cy = tb - _HH
+                vy = 0.0
+                break
+
+        if cy + _HH < 0:
+            return []
+
+    return []

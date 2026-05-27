@@ -6,3 +6,5 @@ logs/*
 models/*
 !logs/.gitkeep
 !models/.gitkeep
+pyproject.toml
+uv.lock

@@ -29,6 +29,11 @@ class GameWindow(arcade.Window):
         self.keys:      dict                   = {}
         self._fps:      float                  = 0.0
 
+        self._show_ghost:      bool            = False
+        self._ghost_sprites:   arcade.SpriteList = arcade.SpriteList()
+        self._ghost_tex                         = None
+        self._ghost_chunk_index: int            = -1
+
     def setup(self):
         self.background_list = arcade.SpriteList()
         
@@ -60,10 +65,16 @@ class GameWindow(arcade.Window):
         self.camera  = Camera()
         self.camera.update(self.player, self.chunk_mgr.world_pixel_width)
 
+        self._show_ghost = False
+        self._ghost_sprites = arcade.SpriteList()
+        self._ghost_chunk_index = -1
+
     def on_key_press(self, key, modifiers):
         self.keys[key] = True
         if key == arcade.key.W or key == arcade.key.SPACE:
             self.player.try_jump()
+        if key == arcade.key.H:
+            self._toggle_ghost()
 
     def on_key_release(self, key, modifiers):
         self.keys[key] = False
@@ -80,10 +91,16 @@ class GameWindow(arcade.Window):
         self.chunk_mgr.update(self.player.center_x)
         self.camera.update(self.player, self.chunk_mgr.world_pixel_width)
         self.score.update(self.player.center_x)
+
+        # Auto-recompute ghost when the player enters a new chunk
+        if self._show_ghost and self.chunk_mgr._current_index != self._ghost_chunk_index:
+            self._compute_ghost()
         
         self.player.update_animation(delta_time)
 
         if self.player.bottom < -100:
+            self.score.save()
+            self.score.reset()
             self.setup()
 
     def on_draw(self):
@@ -96,17 +113,30 @@ class GameWindow(arcade.Window):
         self.chunk_mgr.walls.draw(pixelated=True)
         self.player.draw(pixelated=True)
 
+        if self._show_ghost and self._ghost_sprites:
+            look_ahead = 20 * TILE_SIZE
+            for s in self._ghost_sprites:
+                if self.player.center_x - TILE_SIZE < s.center_x <= self.player.center_x + look_ahead:
+                    s.draw()
+
         self.camera.use_gui()
 
         arcade.draw_text(
-            f"Distance: {self.score.tiles_traveled}m", 
+            f"Distance: {self.score.tiles_traveled}m",
             20, SCREEN_HEIGHT - 40,
             arcade.color.WHITE, 18, bold=True
         )
 
         arcade.draw_text(
-            "W: Jump | A/D: Move",
-            20, SCREEN_HEIGHT - 68,
+            f"Best: {self.score.best_tiles}m",
+            20, SCREEN_HEIGHT - 66,
+            (180, 180, 60), 14, bold=True
+        )
+
+        hint = "H: Hide ghost" if self._show_ghost else "H: Show ghost"
+        arcade.draw_text(
+            f"W: Jump | A/D: Move | {hint}",
+            20, SCREEN_HEIGHT - 90,
             (160, 160, 160), 13
         )
 
@@ -115,3 +145,61 @@ class GameWindow(arcade.Window):
             SCREEN_WIDTH - 80, SCREEN_HEIGHT - 40,
             (120, 120, 120), 13
         )
+
+    def _toggle_ghost(self):
+        if self._show_ghost:
+            self._show_ghost = False
+            self._ghost_sprites = arcade.SpriteList()
+        else:
+            self._compute_ghost()
+            self._show_ghost = True
+
+    def _compute_ghost(self):
+        from validation.headless_runner import record_headless
+        from validation.platform_graph import PlatformGraph
+
+        index = self.chunk_mgr._current_index
+        entry = self.chunk_mgr._loaded.get(index)
+        if not entry:
+            self._ghost_sprites = arcade.SpriteList()
+            return
+
+        chunk = entry['chunk']
+        chunk_offset = index * self.chunk_mgr._chunk_px_width
+        rows = chunk.tiles.shape[0]
+
+        # Lazy-load ghost texture (first idle frame, same sprite sheet as player)
+        if self._ghost_tex is None:
+            tex_list = arcade.load_spritesheet(
+                "assets\\Char_Robot.png",
+                sprite_width=48, sprite_height=48,
+                columns=8, count=48
+            )
+            self._ghost_tex = tex_list[16]
+
+        # Prefer headless path (most realistic); fall back to A* tile path
+        positions = record_headless(chunk)  # chunk-local pixel coords
+        if positions:
+            world_positions = [(chunk_offset + cx, cy) for cx, cy in positions]
+        else:
+            _graph = PlatformGraph()
+            start_pos = (0, chunk.entry_row)
+            final_pos  = (chunk.width_tiles - 1, chunk.exit_row)
+            path = _graph.a_star(start_pos, final_pos, chunk.tiles, return_path=True)
+            # (col, row) -> world pixel center; row is the empty tile, solid is at row+1
+            world_positions = [
+                (chunk_offset + col * TILE_SIZE + TILE_SIZE // 2,
+                 (rows - row - 1) * TILE_SIZE + 12)
+                for col, row in path
+            ]
+
+        self._ghost_sprites = arcade.SpriteList()
+        for wx, wy in world_positions:
+            s = arcade.Sprite()
+            s.texture = self._ghost_tex
+            s.center_x = wx
+            s.center_y = wy
+            s.alpha = 90
+            self._ghost_sprites.append(s)
+
+        self._ghost_chunk_index = index
