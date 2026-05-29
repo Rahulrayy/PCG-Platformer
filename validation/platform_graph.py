@@ -58,7 +58,7 @@ class PlatformGraph():
         """Possibly pre compute all the possible dx, dy combinations to save computational cost"""
         t1 = dx / self.v_x
         
-        maximum_y = self.v_jump * self.t_y_max - (self.g * (t1 ** 2)) / 2 # This is the maximum height that can be reached independant of dt
+        maximum_y = self.v_jump * self.t_y_max - (self.g * (self.t_y_max ** 2)) / 2 # This is the maximum height that can be reached independant of dt
 
         if t1 <= self.t_y_max and t1 > 0: # If the character is still ascending, you can reach uptill the maximum height
             y_max = maximum_y
