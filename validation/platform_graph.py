@@ -35,6 +35,7 @@ class PlatformGraph():
         self.v_x = config.MOVE_SPEED
         self.v_max = config.MAX_FALL_SPEED
         self.t_max  = (self.v_jump + self.v_max) / self.g
+        self.t_y_max = self.v_jump / self.g
         self.t_rise = self.v_jump / self.g                  # time to arc peak
         self.peak_px = int(self.v_x * self.t_rise)          # horizontal distance at arc peak
 
@@ -56,8 +57,13 @@ class PlatformGraph():
     def _max_y(self, dx: int) -> int:
         """Possibly pre compute all the possible dx, dy combinations to save computational cost"""
         t1 = dx / self.v_x
+        
+        maximum_y = self.v_jump * self.t_y_max - (self.g * (t1 ** 2)) / 2 # This is the maximum height that can be reached independant of dt
 
-        if t1 <= self.t_max:
+        if t1 <= self.t_y_max and t1 > 0: # If the character is still ascending, you can reach uptill the maximum height
+            y_max = maximum_y
+
+        elif t1 <= self.t_max:
             y_max = self.v_jump * t1 - (self.g * (t1 ** 2)) / 2 # fall is parabolic if t1 <= t_max
 
         else:
