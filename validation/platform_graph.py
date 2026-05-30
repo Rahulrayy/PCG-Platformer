@@ -81,24 +81,25 @@ class PlatformGraph():
         max_y_lookup = self._max_y_arr[min_px:max_px + 1]
         lookup_indices = np.clip(dx_px, min_px, max_px) - min_px  # clip before indexing to avoid negatives
         max_y_values = max_y_lookup[lookup_indices] / config.TILE_SIZE  #convert pixel height back to tiles
-        reachable_mask = y_coords >= (pos1[1] - max_y_values) # row 0 is top so jumping up = decreasing row
+        reachable_mask = y_coords > (pos1[1] - max_y_values) # row 0 is top so jumping up = decreasing row
         return reachable_mask
 
     def _is_ground(self, chunk: np.ndarray):
+        ground_mask = np.zeros(chunk.shape)
         ground_diff = chunk[1:, :] - chunk[:-1, :] # 1 where empty tile has solid tile directly below
         ground_mask = np.where(ground_diff == 1)
         return ground_mask
     
     def _arc_clear(self, pos1: tuple[int, int], pos2: tuple[int, int], chunk: np.ndarray) -> bool:
         """Returns False if a solid tile blocks the jump arc between pos1 and pos2."""
-        for col in range(pos1[0] + 1, pos2[0]):
+        for col in range(pos1[0] + 1, pos2[0]+1):
             t = (col - pos1[0]) * config.TILE_SIZE / self.v_x
             if t <= self.t_max:
                 y_offset_px = self.v_jump * t - (self.g * t ** 2) / 2
             else:
                 y_offset_px = self.v_jump * self.t_max - (self.g * self.t_max ** 2) / 2 - self.v_max * (t - self.t_max)
             arc_row = pos1[1] - y_offset_px / config.TILE_SIZE  # up = decreasing row
-            for row in [int(arc_row), int(arc_row) - 1]:  # check feet and head (player is 1 tile tall)
+            for row in [int(np.ceil(arc_row)), int(np.ceil(arc_row)) - 1]:  # check feet and head (player is 1 tile tall)
                 if 0 <= row < chunk.shape[0] and chunk[row, col] == 1:
                     return False
         return True
@@ -131,7 +132,7 @@ class PlatformGraph():
                 open_set.discard(node)  # remove stale duplicate so open_set stays accurate
                 continue
 
-            if node.x == final_pos[0] and abs(node.y - final_pos[1]) <= 3:  # any ground tile on the right edge column is a valid exit
+            if node.x == final_pos[0] and abs(node.y - final_pos[1]) <= 1:  # any ground tile on the right edge column is a valid exit
                 if return_path:
                     path = []
                     n = node
@@ -153,14 +154,14 @@ class PlatformGraph():
                 pos = child_positions[i]
                 if pos in closed_set:
                     continue
-                if pos[1] <= node.pos[1]:  # upward jump
+                if pos[1] < node.pos[1]:  # upward jump
                     dx_px = (pos[0] - node.pos[0]) * config.TILE_SIZE
                     # adjacent 1-tile step: player wall-climbs, no arc constraint applies
                     adjacent_step = (node.pos[1] - pos[1] == 1 and pos[0] == node.pos[0] + 1)
                     if not adjacent_step and dx_px < self.peak_px:
                         continue  # player still rising at destination, cannot land
-                    if not self._arc_clear(node.pos, pos, chunk):
-                        continue
+                if not self._arc_clear(node.pos, pos, chunk):
+                    continue
 
                 g = node.g + self.manhatten_dist(node.pos, pos)
                 h = self.manhatten_dist(pos, final_pos)

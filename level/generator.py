@@ -16,7 +16,7 @@ def carve_edges(tiles: np.ndarray, entry_row: int | None = None) -> int:
     floor_r = left_row + _CORRIDOR_WIDTH - 1
     if floor_r < rows:
         tiles[floor_r, 0] = SOLID   # entry ground node for A*
-    return left_row
+    return floor_r
 
 
 def carve_corridor(tiles: np.ndarray, entry_row: int) -> int:
@@ -36,7 +36,7 @@ def carve_corridor(tiles: np.ndarray, entry_row: int) -> int:
     floor_r = exit_row + _CORRIDOR_WIDTH - 1
     if floor_r < rows:
         tiles[floor_r, cols - 1] = SOLID   # exit ground node for A*
-    return exit_row
+    return floor_r  # return ground node row (empty tile above floor)
 
 
 def generate_raw_chunk(index: int, entry_row: int | None = None) -> Chunk:

@@ -181,20 +181,20 @@ class GameWindow(arcade.Window):
             self._ghost_tex = tex_list[16]
 
         # Prefer headless path (most realistic); fall back to A* tile path
-        positions = record_headless(chunk)  # chunk-local pixel coords
-        if positions:
-            world_positions = [(chunk_offset + cx, cy) for cx, cy in positions]
-        else:
-            _graph = PlatformGraph()
-            start_pos = (0, chunk.entry_row)
-            final_pos  = (chunk.width_tiles - 1, chunk.exit_row)
-            path = _graph.a_star(start_pos, final_pos, chunk.tiles, return_path=True)
-            # (col, row) -> world pixel center; row is the empty tile, solid is at row+1
-            world_positions = [
-                (chunk_offset + col * TILE_SIZE + TILE_SIZE // 2,
-                 (rows - row - 1) * TILE_SIZE + 12)
-                for col, row in path
-            ]
+        # positions = record_headless(chunk)  # chunk-local pixel coords
+        # if positions:
+        #     world_positions = [(chunk_offset + cx, cy) for cx, cy in positions]
+        # else:
+        _graph = PlatformGraph()
+        start_pos = (0, chunk.entry_row)
+        final_pos  = (chunk.width_tiles - 1, chunk.exit_row)
+        path = _graph.a_star(start_pos, final_pos, chunk.tiles, return_path=True)
+        # (col, row) -> world pixel center; row is the empty tile, solid is at row+1
+        world_positions = [
+            (chunk_offset + col * TILE_SIZE + TILE_SIZE // 2,
+                (rows - row - 1) * TILE_SIZE + 12)
+            for col, row in path
+        ]
 
         self._ghost_sprites = arcade.SpriteList()
         for wx, wy in world_positions:
