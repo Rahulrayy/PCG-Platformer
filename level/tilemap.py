@@ -1,5 +1,6 @@
 import arcade
 import numpy as np
+import os
 from level.chunk import Chunk, SOLID
 from config import TILE_SIZE
 
@@ -7,7 +8,7 @@ def chunk_to_sprite_list(chunk: Chunk) -> arcade.SpriteList:
     walls = arcade.SpriteList(use_spatial_hash=True)
     
     tileset = arcade.load_spritesheet(
-        "assets\\Tileset.png",
+        os.path.join("assets", "Tileset.png"),
         sprite_width=48,
         sprite_height=48,
         columns=3,

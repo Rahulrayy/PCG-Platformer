@@ -1,4 +1,5 @@
 import arcade
+import os
 
 from config import (
     SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE,
@@ -25,8 +26,8 @@ class GameWindow(arcade.Window):
         self.camera:    Camera          | None = None
         
         self.score:     Score                  = Score()
-        self.keys:      dict            = {}
-        self._fps:      float           = 0.0
+        self.keys:      dict                   = {}
+        self._fps:      float                  = 0.0
 
         self._show_ghost:      bool            = False
         self._ghost_sprites:   arcade.SpriteList = arcade.SpriteList()
@@ -37,7 +38,7 @@ class GameWindow(arcade.Window):
         self.background_list = arcade.SpriteList()
         
         bg_textures = arcade.load_spritesheet(
-            "assets\\Background_n_details.png",
+            os.path.join("assets","Background_n_details.png"),
             sprite_width=64, 
             sprite_height=64, 
             columns=4, 
@@ -74,6 +75,10 @@ class GameWindow(arcade.Window):
             self.player.try_jump()
         if key == arcade.key.H:
             self._toggle_ghost()
+        if key == arcade.key.R:
+            self.score.save()
+            self.score.reset()
+            self.setup()
 
     def on_key_release(self, key, modifiers):
         self.keys[key] = False
@@ -134,11 +139,10 @@ class GameWindow(arcade.Window):
 
         hint = "H: Hide ghost" if self._show_ghost else "H: Show ghost"
         arcade.draw_text(
-            f"W: Jump | A/D: Move | {hint}",
+            f"W: Jump | A/D: Move | R: Reset | {hint}",
             20, SCREEN_HEIGHT - 90,
             (160, 160, 160), 13
         )
-
         arcade.draw_text(
             f"FPS: {self._fps:.0f}",
             SCREEN_WIDTH - 80, SCREEN_HEIGHT - 40,
@@ -170,7 +174,7 @@ class GameWindow(arcade.Window):
         # Lazy-load ghost texture (first idle frame, same sprite sheet as player)
         if self._ghost_tex is None:
             tex_list = arcade.load_spritesheet(
-                "assets\\Char_Robot.png",
+                os.path.join("assets", "Char_Robot.png"),
                 sprite_width=48, sprite_height=48,
                 columns=8, count=48
             )
