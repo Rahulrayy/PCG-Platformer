@@ -131,7 +131,7 @@ class PlatformGraph():
                 open_set.discard(node)  # remove stale duplicate so open_set stays accurate
                 continue
 
-            if node.x == final_pos[0]:  # any ground tile on the right edge column is a valid exit
+            if node.x == final_pos[0] and abs(node.y - final_pos[1]) <= 3:  # any ground tile on the right edge column is a valid exit
                 if return_path:
                     path = []
                     n = node
@@ -153,7 +153,7 @@ class PlatformGraph():
                 pos = child_positions[i]
                 if pos in closed_set:
                     continue
-                if pos[1] < node.pos[1]:  # upward jump
+                if pos[1] <= node.pos[1]:  # upward jump
                     dx_px = (pos[0] - node.pos[0]) * config.TILE_SIZE
                     # adjacent 1-tile step: player wall-climbs, no arc constraint applies
                     adjacent_step = (node.pos[1] - pos[1] == 1 and pos[0] == node.pos[0] + 1)
