@@ -87,13 +87,15 @@ def run_headless(chunk: Chunk, path: list[tuple[int, int]] | None = None) -> boo
     vy: float = 0.0
     on_ground = False
 
-    goal_x = (cols - 1) * _TS
+    goal_x       = (cols - 1) * _TS
+    exit_floor_y = (rows - chunk.exit_row) * _TS  # floor surface at exit column
     best_x  = cx
     stuck   = 0
     wp_idx  = 1  # path[0] is the start tile, begin from next
 
     for _ in range(_MAX_STEPS):
-        if cx + _HW >= goal_x:
+        # Success: reached the right edge, on the ground, at exit floor height (±1 tile)
+        if cx + _HW >= goal_x and on_ground and abs((cy - _HH) - exit_floor_y) <= _TS:
             return True
 
         # Advance past waypoints the bot has already reached
@@ -191,7 +193,8 @@ def record_headless(chunk: Chunk, path: list[tuple[int, int]] | None = None) -> 
     vy: float = 0.0
     on_ground = False
 
-    goal_x = (cols - 1) * _TS
+    goal_x       = (cols - 1) * _TS
+    exit_floor_y = (rows - chunk.exit_row) * _TS
     best_x  = cx
     stuck   = 0
     wp_idx  = 1
@@ -199,7 +202,7 @@ def record_headless(chunk: Chunk, path: list[tuple[int, int]] | None = None) -> 
     positions: list[tuple[float, float]] = []
 
     for step in range(_MAX_STEPS):
-        if cx + _HW >= goal_x:
+        if cx + _HW >= goal_x and on_ground and abs((cy - _HH) - exit_floor_y) <= _TS:
             return positions
 
         if step % 10 == 0:
