@@ -35,6 +35,9 @@ class GameWindow(arcade.Window):
         self._ghost_chunk_index: int            = -1
 
     def setup(self):
+        if self.chunk_mgr is not None:
+            self.chunk_mgr.shutdown()
+
         self.background_list = arcade.SpriteList()
         
         bg_textures = arcade.load_spritesheet(

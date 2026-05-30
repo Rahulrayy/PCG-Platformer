@@ -71,19 +71,12 @@ class PlatformGraph():
     
         return int(y_max)
     
-    def _reachable(self, pos1: tuple[int, int], grid_shape: tuple[int, int]):
-        y_coords, x_coords = np.indices(grid_shape)
-        dx = x_coords - pos1[0]
-        dx_px = dx * config.TILE_SIZE  # ositions are in tiles; physics dict is keyed in pixels
-
-        min_px = max(int(np.min(dx_px)), 0)                     # negative dx (leftward) not in dict, default 0
-        max_px = min(int(np.max(dx_px)), self.screen_width - 1) #clamp to precomputed range
-        max_y_lookup = self._max_y_arr[min_px:max_px + 1]
-        lookup_indices = np.clip(dx_px, min_px, max_px) - min_px  # clip before indexing to avoid negatives
-        max_y_values = max_y_lookup[lookup_indices] / config.TILE_SIZE  #convert pixel height back to tiles
-        reachable_mask = y_coords > (pos1[1] - max_y_values) # row 0 is top so jumping up = decreasing row
-        return reachable_mask
-
+    def _reachable(self, pos1: tuple[int, int], gx: np.ndarray, gy: np.ndarray) -> np.ndarray:
+        """Returns boolean array over ground tiles: True where pos1 can reach that tile."""
+        dx_px = (gx - pos1[0]) * config.TILE_SIZE
+        clamped = np.clip(dx_px, 0, self.screen_width - 1)
+        max_y_values = self._max_y_arr[clamped] / config.TILE_SIZE
+        return gy > (pos1[1] - max_y_values)
     def _is_ground(self, chunk: np.ndarray):
         ground_mask = np.zeros(chunk.shape)
         ground_diff = chunk[1:, :] - chunk[:-1, :] # 1 where empty tile has solid tile directly below
@@ -98,8 +91,8 @@ class PlatformGraph():
                 y_offset_px = self.v_jump * t - (self.g * t ** 2) / 2
             else:
                 y_offset_px = self.v_jump * self.t_max - (self.g * self.t_max ** 2) / 2 - self.v_max * (t - self.t_max)
-            arc_row = pos1[1] - y_offset_px / config.TILE_SIZE  # up = decreasing row
-            for row in [int(np.ceil(arc_row)), int(np.ceil(arc_row)) - 1]:  # check feet and head (player is 1 tile tall)
+            arc_row = pos1[1] - y_offset_px / config.TILE_SIZE
+            for row in [int(np.ceil(arc_row)), int(np.ceil(arc_row)) - 1]:
                 if 0 <= row < chunk.shape[0] and chunk[row, col] == 1:
                     return False
         return True
@@ -146,9 +139,7 @@ class PlatformGraph():
             open_set.discard(node)
             closed_set.add(node.pos)
 
-            reachable_mask = self._reachable(node.pos, chunk.shape)
-            # vectorised: index the mask at all ground positions in one shot, iterate only reachable ones
-            reachable_flags = reachable_mask[_gy, _gx]
+            reachable_flags = self._reachable(node.pos, _gx, _gy)
 
             for i in np.where(reachable_flags)[0]:
                 pos = child_positions[i]
