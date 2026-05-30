@@ -180,21 +180,23 @@ class GameWindow(arcade.Window):
             )
             self._ghost_tex = tex_list[16]
 
-        # Prefer headless path (most realistic); fall back to A* tile path
-        # positions = record_headless(chunk)  # chunk-local pixel coords
-        # if positions:
-        #     world_positions = [(chunk_offset + cx, cy) for cx, cy in positions]
-        # else:
+        # Compute A* path for waypoint guidance and as fallback ghost trail
         _graph = PlatformGraph()
-        start_pos = (0, chunk.entry_row)
-        final_pos  = (chunk.width_tiles - 1, chunk.exit_row)
+        start_pos = (0, chunk.entry_row - 1)
+        final_pos  = (chunk.width_tiles - 1, chunk.exit_row - 1)
         path = _graph.a_star(start_pos, final_pos, chunk.tiles, return_path=True)
-        # (col, row) -> world pixel center; row is the empty tile, solid is at row+1
-        world_positions = [
-            (chunk_offset + col * TILE_SIZE + TILE_SIZE // 2,
-                (rows - row - 1) * TILE_SIZE + 12)
-            for col, row in path
-        ]
+
+        # Prefer headless physics trajectory (most realistic); fall back to A* tile path
+        positions = record_headless(chunk, path) if path else []
+        if positions:
+            world_positions = [(chunk_offset + cx, cy) for cx, cy in positions]
+        else:
+            # A* tile path: (col, row) -> world pixel center above the ground tile
+            world_positions = [
+                (chunk_offset + col * TILE_SIZE + TILE_SIZE // 2,
+                 (rows - row - 1) * TILE_SIZE + 12)
+                for col, row in (path or [])
+            ]
 
         self._ghost_sprites = arcade.SpriteList()
         for wx, wy in world_positions:

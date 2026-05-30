@@ -6,7 +6,7 @@ from level.tilemap import chunk_to_sprite_list
 from game.chunk_worker import generate_and_validate
 from config import TILE_SIZE
 
-_N_WORKERS = min(3, max(1, (os.cpu_count() or 2) - 1))
+_N_WORKERS = min(5, max(1, (os.cpu_count() or 2) - 1))
 
 class ChunkManager:
     """

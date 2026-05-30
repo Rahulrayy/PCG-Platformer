@@ -42,7 +42,7 @@ def carve_corridor(tiles: np.ndarray, entry_row: int) -> int:
 def generate_raw_chunk(index: int, entry_row: int | None = None) -> Chunk:
     tiles = get_raw_tile_array()
     actual_entry_row = carve_edges(tiles, entry_row)
-    exit_row = carve_corridor(tiles, actual_entry_row)
+    exit_row = carve_corridor(tiles, actual_entry_row - (_CORRIDOR_WIDTH - 1))
 
     chunk = Chunk(tiles=tiles, index=index, entry_row=actual_entry_row)
     chunk.exit_row = exit_row

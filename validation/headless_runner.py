@@ -37,18 +37,18 @@ def _should_jump(cx: float, cy: float, tiles, rows: int, cols: int) -> bool:
     if next_col >= cols:
         return False
 
-    lo = cy - _HH   # player bottom in pixels
-    hi = cy + _HH   # player top  in pixels
+    lo = cy - _HH
+    hi = cy + _HH
+    feet_row = int(rows - lo / _TS)
 
-    #wall/ step-up----solid tile in next column overlaps player body
+    # wall or step-up: solid tile overlapping player body in next column
     for r in range(rows):
         tb = (rows - 1 - r) * _TS
         tt = tb + _TS
         if tiles[r, next_col] == SOLID and tb < hi and tt > lo:
             return True
 
-    #no solid floor within the safe-drop range in the next 2 columns
-    feet_row = int(rows - lo / _TS)
+    # gap ahead: no solid floor within safe-drop range in next 2 columns
     for col in range(next_col, min(cols, next_col + 2)):
         has_floor = any(
             tiles[r, col] == SOLID
@@ -61,17 +61,20 @@ def _should_jump(cx: float, cy: float, tiles, rows: int, cols: int) -> bool:
     return False
 
 
-def run_headless(chunk: Chunk) -> bool:
+_PEAK_DIST = int(_MOVE * (_JUMP / _GRAVITY))  # horizontal distance when jump arc peaks (~154px)
+
+def run_headless(chunk: Chunk, path: list[tuple[int, int]] | None = None) -> bool:
     """
     Simulate a physics-aware bot through the chunk.
     Returns True if it reaches the right edge within _MAX_STEPS frames.
+    If path (A* waypoints as (col, row) ground-tile pairs) is provided, the bot
+    uses them to time elevation jumps; _should_jump handles local CA obstacles.
     """
     rows, cols = chunk.tiles.shape
     tiles = chunk.tiles
 
-    # Start just above the guaranteed floor tile at column 0
     entry_row = chunk.entry_row
-    floor_row = entry_row + 1
+    floor_row = entry_row  # entry_row is now the solid floor tile row
     while floor_row < rows and tiles[floor_row, 0] != SOLID:
         floor_row += 1
     if floor_row >= rows:
@@ -87,35 +90,57 @@ def run_headless(chunk: Chunk) -> bool:
     goal_x = (cols - 1) * _TS
     best_x  = cx
     stuck   = 0
+    wp_idx  = 1  # path[0] is the start tile, begin from next
 
     for _ in range(_MAX_STEPS):
         if cx + _HW >= goal_x:
             return True
 
-        #Bot input-- always move right, jump only when the look-ahead says to
-        vx = _MOVE
-        if on_ground and _should_jump(cx, cy, tiles, rows, cols):
-            vy = _JUMP
-            on_ground = False
+        # Advance past waypoints the bot has already reached
+        if path:
+            while wp_idx < len(path) - 1 and cx >= path[wp_idx][0] * _TS:
+                wp_idx += 1
 
-        # If stuck on the ground for too long, try jumping to get unstuck
-        if cx <= best_x + 0.5:
-            stuck += 1
-            if stuck >= _STUCK_STEPS:
-                return False
-            if on_ground and stuck % 30 == 0:
+        vx = _MOVE
+
+        if on_ground:
+            jump = False
+
+            # Waypoint elevation jump: jump when within peak-arc distance of a
+            # higher waypoint so the arc crests at the target platform level
+            if path and wp_idx < len(path):
+                wp_col, wp_row = path[wp_idx]
+                wp_floor_y = (rows - wp_row - 1) * _TS  # floor surface of target tile
+                player_floor_y = cy - _HH
+                dist_to_wp = wp_col * _TS - cx
+                if wp_floor_y > player_floor_y + _TS * 0.5 and 0 < dist_to_wp <= _PEAK_DIST + _TS:
+                    jump = True
+
+            if not jump:
+                jump = _should_jump(cx, cy, tiles, rows, cols)
+
+            if jump:
                 vy = _JUMP
                 on_ground = False
+
+        # Only count stuck frames when on the ground — airborne frames don't burn
+        # the timeout, allowing the bot to wall-climb by rising against a wall
+        if cx <= best_x + 0.5:
+            if on_ground:
+                stuck += 1
+                if stuck >= _STUCK_STEPS:
+                    return False
+                if stuck % 30 == 0:
+                    vy = _JUMP
+                    on_ground = False
         else:
             best_x = cx
             stuck  = 0
 
-        #ggravity
         vy -= _GRAVITY * _DT
         if vy < -_MAX_FALL:
             vy = -_MAX_FALL
 
-        #horizontal move + collision resolution
         cx += vx * _DT
         for r, c in _nearby_solid(cx, cy, tiles):
             tl, tr, tb, tt = _tile_rect(r, c, rows)
@@ -124,7 +149,6 @@ def run_headless(chunk: Chunk) -> bool:
                 vx = 0.0
                 break
 
-        #Vertical move + collision resolution
         on_ground = False
         cy += vy * _DT
         for r, c in _nearby_solid(cx, cy, tiles):
@@ -144,7 +168,7 @@ def run_headless(chunk: Chunk) -> bool:
     return False
 
 
-def record_headless(chunk: Chunk) -> list[tuple[float, float]]:
+def record_headless(chunk: Chunk, path: list[tuple[int, int]] | None = None) -> list[tuple[float, float]]:
     """
     Same simulation as run_headless but returns a list of (cx, cy) pixel positions
     sampled every 10 steps. Returns an empty list if the bot fails to reach the exit.
@@ -154,7 +178,7 @@ def record_headless(chunk: Chunk) -> list[tuple[float, float]]:
     tiles = chunk.tiles
 
     entry_row = chunk.entry_row
-    floor_row = entry_row + 1
+    floor_row = entry_row  # entry_row is now the solid floor tile row
     while floor_row < rows and tiles[floor_row, 0] != SOLID:
         floor_row += 1
     if floor_row >= rows:
@@ -170,6 +194,7 @@ def record_headless(chunk: Chunk) -> list[tuple[float, float]]:
     goal_x = (cols - 1) * _TS
     best_x  = cx
     stuck   = 0
+    wp_idx  = 1
 
     positions: list[tuple[float, float]] = []
 
@@ -180,18 +205,34 @@ def record_headless(chunk: Chunk) -> list[tuple[float, float]]:
         if step % 10 == 0:
             positions.append((cx, cy))
 
-        vx = _MOVE
-        if on_ground and _should_jump(cx, cy, tiles, rows, cols):
-            vy = _JUMP
-            on_ground = False
+        if path:
+            while wp_idx < len(path) - 1 and cx >= path[wp_idx][0] * _TS:
+                wp_idx += 1
 
-        if cx <= best_x + 0.5:
-            stuck += 1
-            if stuck >= _STUCK_STEPS:
-                return []
-            if on_ground and stuck % 30 == 0:
+        vx = _MOVE
+
+        if on_ground:
+            jump = False
+            if path and wp_idx < len(path):
+                wp_col, wp_row = path[wp_idx]
+                wp_floor_y = (rows - wp_row - 1) * _TS
+                dist_to_wp = wp_col * _TS - cx
+                if wp_floor_y > cy - _HH + _TS * 0.5 and 0 < dist_to_wp <= _PEAK_DIST + _TS:
+                    jump = True
+            if not jump:
+                jump = _should_jump(cx, cy, tiles, rows, cols)
+            if jump:
                 vy = _JUMP
                 on_ground = False
+
+        if cx <= best_x + 0.5:
+            if on_ground:
+                stuck += 1
+                if stuck >= _STUCK_STEPS:
+                    return []
+                if stuck % 30 == 0:
+                    vy = _JUMP
+                    on_ground = False
         else:
             best_x = cx
             stuck  = 0
